@@ -21,7 +21,6 @@ import logging
 
 import netCDF4 as nc
 from ase.units import Ha
-from ase_koopmans import io
 import xarray
 import itertools
 import numpy as np
@@ -691,6 +690,15 @@ class KcwQpDatabaseGenerator:
         else:
             import tempfile
             import shutil
+
+            try:
+                from ase_koopmans import io
+            except ImportError as e:
+                raise ImportError(
+                    "Reading a kcw.x output file from a path needs the 'legacy' "
+                    "extra: pip install \"k2y[legacy]\". Pass output_ase instead "
+                    "to avoid this dependency."
+                ) from e
 
             path = Path(path)
             # ase_koopmans.io dispatches on file extension; if the file does not
