@@ -18,8 +18,6 @@ The following Python package is **not on PyPI** and must be installed from sourc
 pip install git+https://github.com/mikibonacci/ase_koopmans.git@add/pKI_diag#egg=ase-koopmans
 ```
 
-`yambopy` installs from PyPI as a regular k2y dependency.
-
 ## Installation
 
 ### From source (recommended)
