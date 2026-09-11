@@ -27,7 +27,7 @@ dependencies = [
     "ase>=3.22.0",
     "xarray>=0.16.0",
     "importlib_resources>=5.0.0",
-    "yambopy @ git+https://github.com/mikibonacci/yambopy.git@aiida-parsing#egg=yambopy",
+    "yambopy>=0.7.1",
 ]
 
 [project.urls]
