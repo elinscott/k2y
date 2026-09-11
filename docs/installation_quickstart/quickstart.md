@@ -8,16 +8,14 @@ k2y requires:
 - A working installation of [Quantum ESPRESSO](https://www.quantum-espresso.org/) (for `pw.x` and `kcw.x`)
 - A working installation of [Yambo](https://www.yambo-code.eu/) (for `p2y` and `yambo`)
 
-The following Python packages are **not on PyPI** and must be installed from source before k2y:
+The following Python package is **not on PyPI** and must be installed from source before k2y:
 
 | Package | Source | Notes |
 |---|---|---|
 | `ase-koopmans` | `https://github.com/mikibonacci/ase_koopmans` branch `add/pKI_diag` | Koopmans fork of ASE |
-| `yambopy` | `https://github.com/yambo-code/yambopy` branch `aiida-parsing` | Python interface to Yambo |
 
 ```bash
 pip install git+https://github.com/mikibonacci/ase_koopmans.git@add/pKI_diag#egg=ase-koopmans
-pip install git+https://github.com/yambo-code/yambopy.git@aiida-parsing#egg=yambopy
 ```
 
 ## Installation
