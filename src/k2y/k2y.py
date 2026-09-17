@@ -942,7 +942,13 @@ class KcwQpDatabaseGenerator:
         
         # Expand k-points to full BZ (cartesian), then convert to match kpoints_type
         expanded_kpoints, expanded_indexes, _ = self.yambopy_ns_db1.expand_kpoints() # this gives cartesian coordinates
-        expanded_kpoints_car = expanded_kpoints.copy()  # keep cartesian copy for QP_kpts
+        # QP_kpts must be in iku, the units of K-POINTS in ns.db1. self.yambopy_ns_db1
+        # is a YamboElectronsDB; its expand_kpoints() returns cartesian (iku/alat)
+        # coordinates and leaves them there (unlike YamboLatticeDB.expand_kpoints(),
+        # which converts back to iku internally), so we convert back ourselves below.
+        expanded_kpoints_iku = np.array(
+            [k * self.yambopy_ns_db1.alat for k in expanded_kpoints]
+        )
         if self.kpoints_type in ['reduced','crystal']:
             expanded_kpoints = car_red(expanded_kpoints,self.yambopy_ns_db1.rlat)
 
@@ -1008,11 +1014,11 @@ class KcwQpDatabaseGenerator:
         logger.debug(f"Shape of the eigenvalues: {np.shape(eigenvalues)}")
         
         ###############################################################################
-        # Use the full-BZ expanded k-points (cartesian, shape (3, n_kpoints_yambo))
+        # Use the full-BZ expanded k-points (iku, shape (3, n_kpoints_yambo))
         # instead of ns.db1's IBZ-only K-POINTS (shape (3, n_kpoints_ibz)).
         # The two would differ whenever symmetry expansion is needed (e.g. 3 IBZ → 8 full-BZ),
         # which caused PARS to report 8 k-points / 160 states while QP_table only had 60 entries.
-        self.kpoints = expanded_kpoints_car.T  # shape (3, n_kpoints_yambo)
+        self.kpoints = expanded_kpoints_iku.T  # shape (3, n_kpoints_yambo)
 
         bands = [1,np.shape(eigenvalues)[0]*np.shape(eigenvalues)[1]]
 
@@ -1060,6 +1066,16 @@ class KcwQpDatabaseGenerator:
         "QP_table": QP_table,
         "PARS":PARS,
         }
+
+        # Yambo rescales the k-points it reads as QP_kpts/HEAD_D_LATT*alat, so
+        # HEAD_D_LATT must carry the lattice parameter of the ns.db1 the QP
+        # database is paired with, not the one the template was built from.
+        # Match ns.db1's own storage dtype for LATTICE_PARAMETER rather than
+        # assuming single precision.
+        self.mapped_vars['HEAD_D_LATT'] = np.array(
+            self.yambopy_ns_db1.alat,
+            dtype=self.ns_db1.variables['LATTICE_PARAMETER'].dtype,
+        )
 
         # Inject the SERIAL_NUMBER from the SAVE directory so Yambo can
         # match the ndb.QP to its own databases (ndb.gops / ndb.kindx).
@@ -1215,7 +1231,7 @@ class KcwQpDatabaseGenerator:
         - `QP_E`: Quasiparticle energies (complex: [[E.real, E.imag], ...])
         - `QP_Eo`: Reference KS energies (real values in Hartree)
         - `QP_Z`: Renormalization factors (set to [[1, 0], ...])
-        - `QP_kpts`: K-point coordinates
+        - `QP_kpts`: K-point coordinates in iku, the units of `K-POINTS` in ns.db1
         - `QP_table`: Mapping [band_index, band_index, kpoint_index]
         - `PARS`: Database parameters
         
