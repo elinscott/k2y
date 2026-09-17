@@ -942,9 +942,10 @@ class KcwQpDatabaseGenerator:
         
         # Expand k-points to full BZ (cartesian), then convert to match kpoints_type
         expanded_kpoints, expanded_indexes, _ = self.yambopy_ns_db1.expand_kpoints() # this gives cartesian coordinates
-        # QP_kpts must be in iku, the units of K-POINTS in ns.db1. yambopy hands
-        # back cartesian (iku/alat) here; YamboLatticeDB.expand_kpoints converts
-        # the same array back the same way.
+        # QP_kpts must be in iku, the units of K-POINTS in ns.db1. self.yambopy_ns_db1
+        # is a YamboElectronsDB; its expand_kpoints() returns cartesian (iku/alat)
+        # coordinates and leaves them there (unlike YamboLatticeDB.expand_kpoints(),
+        # which converts back to iku internally), so we convert back ourselves below.
         expanded_kpoints_iku = np.array(
             [k * self.yambopy_ns_db1.alat for k in expanded_kpoints]
         )
@@ -1069,8 +1070,11 @@ class KcwQpDatabaseGenerator:
         # Yambo rescales the k-points it reads as QP_kpts/HEAD_D_LATT*alat, so
         # HEAD_D_LATT must carry the lattice parameter of the ns.db1 the QP
         # database is paired with, not the one the template was built from.
+        # Match ns.db1's own storage dtype for LATTICE_PARAMETER rather than
+        # assuming single precision.
         self.mapped_vars['HEAD_D_LATT'] = np.array(
-            self.yambopy_ns_db1.alat, dtype=np.float32
+            self.yambopy_ns_db1.alat,
+            dtype=self.ns_db1.variables['LATTICE_PARAMETER'].dtype,
         )
 
         # Inject the SERIAL_NUMBER from the SAVE directory so Yambo can

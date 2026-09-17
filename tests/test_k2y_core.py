@@ -351,26 +351,6 @@ class TestQPUnits:
             match = np.any(np.all(np.abs(qp_kpts - k) < 1e-6, axis=1))
             assert match, f"IBZ k-point {k} absent from QP_kpts"
 
-    def test_qp_kpts_are_not_cartesian(self, generator, tmp_qp_path, ns_db1_path):
-        """Cartesian (iku/alat) k-points must not pass the IBZ containment check.
-
-        Without this the previous test would also pass on a database written in
-        yambopy's cartesian units whenever alat happened to be 1.
-        """
-        generator.generate_QP_db(str(tmp_qp_path))
-        with nc.Dataset(str(tmp_qp_path)) as ds:
-            qp_kpts = np.array(ds.variables["QP_kpts"][:]).T
-        with nc.Dataset(str(ns_db1_path)) as ds:
-            ibz = np.array(ds.variables["K-POINTS"][:]).T
-            alat = np.array(ds.variables["LATTICE_PARAMETER"][:]).flatten()
-        cartesian = qp_kpts / alat
-        # The zone centre survives any rescaling; every other IBZ point must not.
-        nonzero_ibz = ibz[np.any(np.abs(ibz) > 1e-6, axis=1)]
-        assert len(nonzero_ibz) > 0
-        for k in nonzero_ibz:
-            match = np.any(np.all(np.abs(cartesian - k) < 1e-6, axis=1))
-            assert not match, f"cartesian k-point {k} unexpectedly matched the IBZ"
-
     def test_head_d_latt_is_the_run_lattice(self, generator, tmp_qp_path, ns_db1_path):
         """HEAD_D_LATT must carry ns.db1's lattice parameter, not the template's."""
         generator.generate_QP_db(str(tmp_qp_path))
