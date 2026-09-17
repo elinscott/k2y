@@ -245,7 +245,7 @@ KfnQPdb = 'E < ./ndb.QP'
 The relevant BSE parameters for this silicon example are:
 
 ```text
-BSEBands =  4 | 5      # valence and conduction bands included in BSE
+BSEBands =  3 | 6      # valence and conduction bands included in BSE
 BEnRange =  0 | 10 eV  # energy range of the spectrum
 BEnSteps = 1000         # number of energy points
 ```
