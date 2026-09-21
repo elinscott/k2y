@@ -8,15 +8,14 @@ k2y requires:
 - A working installation of [Quantum ESPRESSO](https://www.quantum-espresso.org/) (for `pw.x` and `kcw.x`)
 - A working installation of [Yambo](https://www.yambo-code.eu/) (for `p2y` and `yambo`)
 
-The following Python packages are **not on PyPI** and must be installed from source before k2y:
+The following Python packages are **not on PyPI**:
 
 | Package | Source | Notes |
 |---|---|---|
-| `ase-koopmans` | `https://github.com/mikibonacci/ase_koopmans` branch `add/pKI_diag` | Koopmans fork of ASE |
+| `ase-koopmans` | `https://github.com/mikibonacci/ase_koopmans` branch `add/pKI_diag` | Koopmans fork of ASE. Optional: only needed to read a kcw.x output file from a path, and installed by the `legacy` extra (see below) |
 | `yambopy` | `https://github.com/yambo-code/yambopy` branch `aiida-parsing` | Python interface to Yambo |
 
 ```bash
-pip install git+https://github.com/mikibonacci/ase_koopmans.git@add/pKI_diag#egg=ase-koopmans
 pip install git+https://github.com/yambo-code/yambopy.git@aiida-parsing#egg=yambopy
 ```
 
@@ -28,6 +27,14 @@ pip install git+https://github.com/yambo-code/yambopy.git@aiida-parsing#egg=yamb
 git clone https://github.com/mikibonacci/k2y.git
 cd k2y
 pip install -e .
+```
+
+### With the file-parsing route
+
+Reading a kcw.x output file from a path needs `ase-koopmans`:
+
+```bash
+pip install -e ".[legacy]"
 ```
 
 ### With optional AiiDA support
