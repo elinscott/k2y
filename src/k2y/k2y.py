@@ -40,6 +40,25 @@ QP_DATABASE_DIMENSIONS = {
     'KPTS_DIM_Y': 'D_0000000007',
 }
 
+
+def _read_serial_number(save_dir: Union[str, Path]) -> Optional[np.ndarray]:
+    """Read SERIAL_NUMBER from a SAVE directory's ndb.gops or ndb.kindx.
+
+    Returns None if neither file exists or carries the variable.
+    """
+    save_dir = Path(save_dir)
+    number = None
+    for candidate in ('ndb.gops', 'ndb.kindx'):
+        candidate_path = save_dir / candidate
+        if candidate_path.exists():
+            with nc.Dataset(str(candidate_path)) as db:
+                if 'SERIAL_NUMBER' in db.variables:
+                    number = np.array(db.variables['SERIAL_NUMBER'][:], dtype=np.float32)
+            if number is not None:
+                break
+    return number
+
+
 class KcwQpDatabaseGenerator:
     """
     Generator for Yambo QP databases from Koopmans eigenvalues.
@@ -765,7 +784,7 @@ class KcwQpDatabaseGenerator:
         
         return kpoints, kpoints_type
     
-    def generate_mappings(self, time_rev:bool=True, brute_force:bool=True, QP_E_consistent_QP_Eo=False) -> None:
+    def generate_mappings(self, time_rev:bool=True, brute_force:bool=True, QP_E_consistent_QP_Eo=False, serial_number: Optional[int] = None) -> None:
         """
         Generate k-point and eigenvalue mappings between KCW and Yambo grids.
         
@@ -795,7 +814,11 @@ class KcwQpDatabaseGenerator:
             coordinates. If direct matching and time-reversal both fail, this tries
             to match |k_x|, |k_y|, |k_z| independently. This is a last resort for
             grids that differ by sign conventions or symmetry operations.
-        
+        serial_number : int, optional
+            SAVE directory's SERIAL_NUMBER, to use instead of the number
+            stashed on this instance (by `from_aiida`) or read from
+            ndb.gops/ndb.kindx. Set this when neither is available.
+
         Attributes Set
         --------------
         ns_db1_evalues : np.ndarray
@@ -1053,21 +1076,33 @@ class KcwQpDatabaseGenerator:
         "PARS":PARS,
         }
 
-        # Inject the SERIAL_NUMBER from the SAVE directory so Yambo can
-        # match the ndb.QP to its own databases (ndb.gops / ndb.kindx).
+        # Read the SAVE directory's own SERIAL_NUMBER (from ndb.gops or
+        # ndb.kindx; ns.db1 does not carry one) so Yambo can match the
+        # ndb.QP to its own databases. Leaving this unset would make
+        # generate_QP_db fall back to the template file's SERIAL_NUMBER,
+        # which Yambo rejects as a mismatch against the SAVE it reads
+        # alongside. `from_aiida` reads this while its temporary SAVE
+        # directory exists and stashes it as `self.serial_number`, since
+        # the directory is gone by the time this method runs.
         save_dir = getattr(self, 'save_dir', None)
-        if save_dir is not None:
-            for candidate in ('ndb.gops', 'ndb.kindx'):
-                candidate_path = save_dir / candidate
-                if candidate_path.exists():
-                    try:
-                        with nc.Dataset(str(candidate_path)) as _db:
-                            if 'SERIAL_NUMBER' in _db.variables:
-                                self.mapped_vars['SERIAL_NUMBER'] = \
-                                    np.array(_db.variables['SERIAL_NUMBER'][:], dtype=np.float32)
-                        break
-                    except Exception:
-                        pass
+        stored_serial_number = getattr(self, 'serial_number', None)
+        if serial_number is not None:
+            mapped_serial_number = np.array(serial_number, dtype=np.float32)
+        elif stored_serial_number is not None:
+            mapped_serial_number = np.array(stored_serial_number, dtype=np.float32)
+        elif save_dir is not None:
+            mapped_serial_number = _read_serial_number(save_dir)
+        else:
+            mapped_serial_number = None
+
+        if mapped_serial_number is None:
+            raise RuntimeError(
+                "Could not read SERIAL_NUMBER from the SAVE directory "
+                f"(checked {save_dir}/ndb.gops and {save_dir}/ndb.kindx). "
+                "Retrieve SAVE/ndb.kindx alongside ns.db1 from the yambo "
+                "setup run, or pass serial_number= explicitly."
+            )
+        self.mapped_vars['SERIAL_NUMBER'] = mapped_serial_number
 
         # This mapping is done onto template.QPs. You should always use them!!!
         # TODO: generalize this, to read from whatever template.QP you want.
@@ -1375,18 +1410,27 @@ class KcwQpDatabaseGenerator:
         
         yambocalculation = orm.load_node(yambo_node_pk)
         kcwcalculation = orm.load_node(kcw_node_pk) if kcw_node_pk else None
-        
-        with tempfile.TemporaryDirectory() as dirpath: # actually skippable...
-            # Open the output file from the AiiDA storage and copy content to the temporary file
-            for filename in yambocalculation.outputs.retrieved.base.repository.list_object_names():
-                if 'ns.db1' in filename:
-                    # Create the file with the desired name
-                    temp_file = pathlib.Path(dirpath) / "ns.db1"
-                    with yambocalculation.outputs.retrieved.open(filename, 'rb') as handle:
-                        temp_file.write_bytes(handle.read())
-                    
-                    kcwqpdatabaseGenerator = cls(ns_db1=temp_file, template_QP_path=template_QP_path, spin=spin)
-                    
+
+        with tempfile.TemporaryDirectory() as dirpath:
+            retrieved = yambocalculation.outputs.retrieved
+            retrieved_names = retrieved.base.repository.list_object_names()
+            for save_filename in ('ns.db1', 'ndb.gops', 'ndb.kindx'):
+                for filename in retrieved_names:
+                    if save_filename in filename:
+                        temp_file = pathlib.Path(dirpath) / save_filename
+                        with retrieved.open(filename, 'rb') as handle:
+                            temp_file.write_bytes(handle.read())
+                        break
+
+            kcwqpdatabaseGenerator = cls(
+                ns_db1=pathlib.Path(dirpath) / "ns.db1", template_QP_path=template_QP_path, spin=spin)
+
+            # ndb.gops/ndb.kindx only exist alongside ns.db1 while this
+            # directory is alive; read the SAVE directory's SERIAL_NUMBER
+            # now and stash it on the instance so generate_mappings can
+            # use it after the directory is cleaned up.
+            kcwqpdatabaseGenerator.serial_number = _read_serial_number(dirpath)
+
             if qp_template_node:
                 filename = "ndb.QP"
                 temp_file = pathlib.Path(dirpath) / filename
