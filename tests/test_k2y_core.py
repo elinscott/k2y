@@ -333,6 +333,83 @@ class TestGenerateQPDb:
 
 
 # ---------------------------------------------------------------------------
+# generate_QP_db_SinglefileData
+# ---------------------------------------------------------------------------
+
+class TestGenerateQPDbSinglefileData:
+    """generate_QP_db_SinglefileData must never write into the process cwd.
+
+    `aiida.load_profile` and `orm.SinglefileData` are stubbed so these tests
+    exercise only the path handling in generate_QP_db_SinglefileData itself,
+    without depending on a configured AiiDA profile.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _stub_aiida(self, monkeypatch):
+        aiida = pytest.importorskip("aiida")
+        from aiida import orm
+
+        monkeypatch.setattr(aiida, "load_profile", lambda *a, **k: None)
+
+        class _StubSinglefileData:
+            def __init__(self, file):
+                self.filepath = file
+                with open(file, "rb") as fh:
+                    self.content_bytes = fh.read()
+                self.pk = None
+
+        monkeypatch.setattr(orm, "SinglefileData", _StubSinglefileData)
+
+    def test_honors_temporary_dir(self, generator, tmp_path, monkeypatch):
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        requested = tmp_path / "requested"
+        requested.mkdir()
+        monkeypatch.chdir(cwd)
+
+        result = generator.generate_QP_db_SinglefileData(
+            filename="probe.QP", temporary_dir=str(requested)
+        )
+
+        assert not (cwd / "probe.QP").exists()
+        assert (requested / "probe.QP").exists()
+        assert result.filepath == str(requested / "probe.QP")
+
+    def test_default_uses_fresh_tempdir_not_cwd(self, generator, tmp_path, monkeypatch):
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        monkeypatch.chdir(cwd)
+
+        generator.generate_QP_db_SinglefileData(filename="probe.QP")
+
+        assert not (cwd / "probe.QP").exists()
+        assert list(cwd.iterdir()) == []
+
+    def test_content_matches_direct_generate_QP_db(self, generator, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        direct_path = tmp_path / "direct.QP"
+        generator.generate_QP_db(str(direct_path))
+
+        requested = tmp_path / "requested"
+        requested.mkdir()
+        result = generator.generate_QP_db_SinglefileData(
+            filename="probe.QP", temporary_dir=str(requested)
+        )
+
+        assert result.content_bytes == direct_path.read_bytes()
+
+    def test_creates_missing_temporary_dir(self, generator, tmp_path):
+        requested = tmp_path / "does" / "not" / "exist"
+
+        result = generator.generate_QP_db_SinglefileData(
+            filename="probe.QP", temporary_dir=str(requested)
+        )
+
+        assert (requested / "probe.QP").exists()
+        assert result.filepath == str(requested / "probe.QP")
+
+
+# ---------------------------------------------------------------------------
 # summary
 # ---------------------------------------------------------------------------
 

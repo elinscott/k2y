@@ -1317,19 +1317,34 @@ class KcwQpDatabaseGenerator:
     def generate_QP_db_SinglefileData(self, filename:str="output.QP", temporary_dir:str=None):
         """
         This method is to be used with the SinglefileData class of AiiDA.
-        
-        Need to do this in a tempfile, if we want to use the workflow.
+
+        Writes the QP database under `temporary_dir` when given, or under a
+        fresh temporary directory otherwise, so a daemon worker's current
+        working directory is never used and never left holding the file.
+        `orm.SinglefileData` copies the file content into the AiiDA
+        repository on construction, so the directory can be discarded once
+        this method returns.
         """
         from aiida import orm, load_profile
         load_profile()
-        
+
         import os
-        
-        self.generate_QP_db(output_filename=filename)
-        new_db = orm.SinglefileData(file=os.path.abspath(filename))
+        import tempfile
+
+        def _write_and_wrap(directory):
+            output_path = os.path.join(directory, filename)
+            self.generate_QP_db(output_filename=output_path)
+            return orm.SinglefileData(file=os.path.abspath(output_path))
+
+        if temporary_dir is not None:
+            os.makedirs(temporary_dir, exist_ok=True)
+            new_db = _write_and_wrap(temporary_dir)
+        else:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                new_db = _write_and_wrap(tmpdir)
         #new_db.store()
         print(f"SinglefileData created, pk={new_db.pk}.")
-        
+
         return new_db
     
 
