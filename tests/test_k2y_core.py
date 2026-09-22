@@ -245,6 +245,29 @@ class TestGenerateMappings:
         with pytest.raises(ValueError, match="Missing required inputs"):
             gen.generate_mappings()
 
+    def test_unmatched_kpoint_raises_instead_of_reusing_previous_match(
+        self, ns_db1_path, kcw_out_path, scf_in_path
+    ):
+        """A KCW k-point grid that cannot supply every ns.db1 full-BZ k-point
+        must raise, not silently carry over the previous k-point's match.
+
+        Si.scf.in lists the 8 points of a 2x2x2 mesh (crystal components in
+        {0, 0.5}) while ns.db1's 8 irreducible points expand to the 64
+        points of a 4x4x4 mesh (crystal components in {0, 0.25, 0.5, 0.75}),
+        so several full-BZ k-points genuinely have no counterpart in
+        kpoints_grid_kcw. Before the fix, the loop variable holding the
+        match index was never reset per iteration, so an unmatched k-point
+        silently reused whichever earlier k-point last matched, duplicating
+        its Koopmans eigenvalues without any warning or error.
+        """
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            gen = KcwQpDatabaseGenerator(ns_db1=str(ns_db1_path))
+        gen.set_koopmans_eval(path=str(kcw_out_path))
+        gen.set_kpoints_from_pwinput(str(scf_in_path))
+        with pytest.raises(RuntimeError, match="no match in kpoints_grid_kcw"):
+            gen.generate_mappings()
+
 
 # ---------------------------------------------------------------------------
 # verify_mappings

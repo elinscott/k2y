@@ -943,9 +943,11 @@ class KcwQpDatabaseGenerator:
         eigenvalues_KS = np.zeros((n_kpoints_yambo, n_bands))
 
         logger.info("Mapping k-points between KCW and Yambo grids...")
-        matched_kpoints = 0
         for k in range(n_kpoints_yambo):
             # expanded_kpoints[k] is the k-th full-BZ kpoint (already in the right coordinate system)
+            # Reset for every iteration: if no branch below finds a match, `where`
+            # must not carry over the previous k-point's index.
+            where = None
             where_first = np.where(np.all(np.abs(self.kpoints_grid_kcw - expanded_kpoints[k])<DEFAULT_KPOINT_TOLERANCE, axis=1))[0]
             if len(where_first) == 0:
                 logger.debug(f"K-point {k} not found directly, trying expanded grid...")
@@ -974,6 +976,19 @@ class KcwQpDatabaseGenerator:
             else:
                 logger.debug(f"K-point {k} found directly in the KCW kpoints grid")
                 where = where_first[0]
+
+            if where is None:
+                methods_tried = ["direct"]
+                if time_rev:
+                    methods_tried.append("time-reversal")
+                if brute_force:
+                    methods_tried.append("brute-force")
+                raise RuntimeError(
+                    f"K-point {k} (coordinates {expanded_kpoints[k]}) has no match in "
+                    f"kpoints_grid_kcw after {', '.join(methods_tried)} matching. "
+                    "The KCW k-point grid must cover every k-point of the ns.db1 mesh."
+                )
+
             #new_KS[k,:] = self.eigenvalues_KS[where,:]
             #new_KI[k,:] = self.eigenvalues_KI[where,:]
             if QP_E_consistent_QP_Eo:
