@@ -247,6 +247,91 @@ class TestGenerateMappings:
 
 
 # ---------------------------------------------------------------------------
+# SERIAL_NUMBER (must come from the SAVE directory, never from the template)
+# ---------------------------------------------------------------------------
+
+class TestSerialNumber:
+
+    def test_matches_save_directory(self, generator, data_dir):
+        """The mapped SERIAL_NUMBER must equal ndb.gops'/ndb.kindx's, not the template's."""
+        with nc.Dataset(str(data_dir / "ndb.gops")) as db:
+            save_serial = np.array(db.variables["SERIAL_NUMBER"][:], dtype=np.float32)
+        with nc.Dataset(generator.template_QP_path) as db:
+            template_serial = np.array(db.variables["SERIAL_NUMBER"][:], dtype=np.float32)
+
+        mapped_serial = np.array(generator.mapped_vars["SERIAL_NUMBER"], dtype=np.float32)
+        assert np.array_equal(mapped_serial, save_serial)
+        assert not np.array_equal(mapped_serial, template_serial)
+
+    def test_written_db_matches_save_directory(self, generator, tmp_qp_path, data_dir):
+        """generate_QP_db must write the SAVE's SERIAL_NUMBER, not the template's."""
+        generator.generate_QP_db(str(tmp_qp_path))
+        with nc.Dataset(str(data_dir / "ndb.gops")) as db:
+            save_serial = np.array(db.variables["SERIAL_NUMBER"][:], dtype=np.float32)
+        with nc.Dataset(str(tmp_qp_path)) as db:
+            written_serial = np.array(db.variables["SERIAL_NUMBER"][:], dtype=np.float32)
+        assert np.array_equal(written_serial, save_serial)
+
+    def test_raises_without_gops_or_kindx(self, ns_db1_path, tmp_path):
+        """Without ndb.gops/ndb.kindx alongside ns.db1, mapping must raise rather
+        than silently leave the template's own SERIAL_NUMBER to be written."""
+        import shutil
+        save_dir = tmp_path / "SAVE"
+        save_dir.mkdir()
+        shutil.copy(ns_db1_path, save_dir / "ns.db1")
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            gen = KcwQpDatabaseGenerator(ns_db1=str(save_dir / "ns.db1"))
+            gen.set_koopmans_eval(
+                path=str(ns_db1_path.parent / "Si.kcw-ham_proj.out"))
+            gen.set_kpoints_from_pwinput(str(ns_db1_path.parent / "Si.scf.in"))
+            with pytest.raises(RuntimeError, match="SERIAL_NUMBER"):
+                gen.generate_mappings()
+
+    def test_from_aiida_layout_with_kindx_succeeds(self, ns_db1_path, data_dir, tmp_path):
+        """from_aiida copies ns.db1 alongside whichever of ndb.gops/ndb.kindx the
+        retrieved folder holds; a layout with only ndb.kindx must be enough."""
+        import shutil
+        save_dir = tmp_path / "SAVE"
+        save_dir.mkdir()
+        shutil.copy(ns_db1_path, save_dir / "ns.db1")
+        shutil.copy(data_dir / "ndb.kindx", save_dir / "ndb.kindx")
+
+        with nc.Dataset(str(data_dir / "ndb.kindx")) as db:
+            save_serial = np.array(db.variables["SERIAL_NUMBER"][:], dtype=np.float32)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            gen = KcwQpDatabaseGenerator(ns_db1=str(save_dir / "ns.db1"))
+            gen.set_koopmans_eval(
+                path=str(ns_db1_path.parent / "Si.kcw-ham_proj.out"))
+            gen.set_kpoints_from_pwinput(str(ns_db1_path.parent / "Si.scf.in"))
+            gen.generate_mappings()
+
+        mapped_serial = np.array(gen.mapped_vars["SERIAL_NUMBER"], dtype=np.float32)
+        assert np.array_equal(mapped_serial, save_serial)
+
+    def test_serial_number_argument_bypasses_lookup(self, ns_db1_path, tmp_path):
+        """serial_number= must map straight through without reading ndb.gops/ndb.kindx."""
+        import shutil
+        save_dir = tmp_path / "SAVE"
+        save_dir.mkdir()
+        shutil.copy(ns_db1_path, save_dir / "ns.db1")
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            gen = KcwQpDatabaseGenerator(ns_db1=str(save_dir / "ns.db1"))
+            gen.set_koopmans_eval(
+                path=str(ns_db1_path.parent / "Si.kcw-ham_proj.out"))
+            gen.set_kpoints_from_pwinput(str(ns_db1_path.parent / "Si.scf.in"))
+            gen.generate_mappings(serial_number=42)
+
+        mapped_serial = np.array(gen.mapped_vars["SERIAL_NUMBER"], dtype=np.float32)
+        assert np.array_equal(mapped_serial, np.array(42, dtype=np.float32))
+
+
+# ---------------------------------------------------------------------------
 # verify_mappings
 # ---------------------------------------------------------------------------
 
